@@ -6,15 +6,13 @@ import time
 MTU_IN_BYTES = 1500
 SOCKET_TIMEOUT_IN_SECONDS = 3
 MAX_RETRIES_PER_TTL = 3
-ICMP_ECHO_REPLY = 0
 ICMP_TIME_EXCEEDED = 11
-ICMP_DEST_UNREACH = 3
-ICMP_DEST_UNREACH_PORT = 3
 
 
-def main():
+def configure_arg_parser():
 
     parser = argparse.ArgumentParser()
+
     parser.add_argument(
         "--destination",
         dest="destination",
@@ -45,6 +43,13 @@ def main():
         help="The size of the packet in bytes to send to the destination.",
     )
 
+    return parser
+
+
+def main():
+
+    parser = configure_arg_parser()
+
     args = parser.parse_args()
 
     # parse arguments
@@ -62,7 +67,6 @@ def main():
     # AF_INET -> socket will use ipv4
     # SOCK_DGRAM -> socket will send/receive connectionless, unreliable datagrams -> udp
     # SOCK_STREAM -> socket will send/receive connection-based, two-way, sequenced byte-streams -> tcp
-
     # traceroute sends udp segements. the connection-oriented nature of tcp is an unecessary overhead
     sending_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -72,7 +76,6 @@ def main():
     # the os keeps it in this state typically for 2*MSL (maximum segement lifetime)
     # in our case, if we want to re-run our program, we can just skip this TIME_WAIT state
     # because we're assuming we were the ones who used the program before
-
     # SOL_SOCKET -> means we want to configure the options of the socket itself, not a specific protocol layer like IP/TCP
     # SO_REUSEADDR -> means we can skip TIME_WAIT state
     # aside: if the port is in use, this option will let you bind to it only if the existing socket is only listening
@@ -106,9 +109,7 @@ def main():
         # try up to MAX_RETRIES_PER_TTL times to get a response
         # store timings and source_ip for all attempts
         timings = []
-        source_ip = None
-        destination_reached = False
-        response_received = False
+        hop_ip = None
 
         for _ in range(MAX_RETRIES_PER_TTL):
             start_time = time.time()
@@ -121,34 +122,27 @@ def main():
                 # calculate elapsed time in milliseconds
                 end_time = time.time()
                 elapsed_ms = (end_time - start_time) * 1000
-                timings.append(f"{elapsed_ms:.1f} ms")
 
                 # the ip header is the first 20 bytes of the packet
                 ip_header = packet[0:20]
                 # the source ip is at the 12th byte and is 4 bytes long
                 source_ip = socket.inet_ntoa(ip_header[12:16])
 
-                # we need the icmp type and code. This wil be right after the ip_header
-                # the first 8 bits are the type and the next 8 bits are the code
+                # we need the icmp type. This wil be right after the ip_header
+                # the first 8 bits are the type
                 icmp_type = struct.unpack("B", packet[20:21])[0]
-                icmp_code = struct.unpack("B", packet[21:22])[0]
 
-                # only process valid ICMP responses (time exceeded or destination unreachable)
-                if icmp_type == ICMP_TIME_EXCEEDED or (
-                    icmp_type == ICMP_DEST_UNREACH and icmp_code == ICMP_DEST_UNREACH_PORT
-                ):
-                    # valid response
+                # check if response is from destination (any ICMP type means we reached it)
+                if source_ip == destination_ip:
                     timings.append(f"{elapsed_ms:.1f} ms")
-                    curr_ip = source_ip
-                    response_received = True
-
-                    # we've reached our destination
-                    if icmp_type == ICMP_DEST_UNREACH:
-                        destination_reached = True
-                    # else: packet timed out en-route
+                    hop_ip = source_ip
+                    curr_ip = destination_ip  # we've reached the destination
+                # otherwise, only process TIME_EXCEEDED from intermediate hops
+                elif icmp_type == ICMP_TIME_EXCEEDED:
+                    timings.append(f"{elapsed_ms:.1f} ms")
+                    hop_ip = source_ip
                 else:
-                    # unexpected ICMP type, just ignore
-                    # this could be other ICMP messages on the network
+                    # unexpected ICMP type from intermediate hop, ignore
                     continue
 
             except socket.timeout:
@@ -157,12 +151,13 @@ def main():
                 # continue to next attempt
 
         # print results for this TTL
-        if response_received:
+        if hop_ip:
             timing_str = "  ".join(timings)
-            if destination_reached:
-                print(f"TTL ({curr_ttl}): {timing_str}  {source_ip} (destination reached!)")
+            if curr_ip == destination_ip:
+                print(f"TTL ({curr_ttl}): {timing_str}  {hop_ip} (destination reached!)")
+                break  # exit main loop when destination is reached
             else:
-                print(f"TTL ({curr_ttl}): {timing_str}  {source_ip}")
+                print(f"TTL ({curr_ttl}): {timing_str}  {hop_ip}")
         else:
             # no responses received for any of the 3 attempts
             timing_str = "  ".join(timings) if timings else "*  *  *"
