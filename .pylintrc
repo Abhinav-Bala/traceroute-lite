@@ -1,0 +1,25 @@
+[MESSAGES CONTROL]
+# Disable commonly annoying warnings
+disable=missing-module-docstring,
+        missing-class-docstring,
+        missing-function-docstring,
+        too-few-public-methods,
+        too-many-arguments,
+        too-many-locals,
+        too-many-branches,
+        too-many-statements,
+        too-many-instance-attributes,
+        too-many-return-statements,
+        too-many-boolean-expressions,
+        broad-except,
+        unused-argument,
+        redefined-outer-name
+
+[FORMAT]
+# Line length
+max-line-length=100
+
+[BASIC]
+# Good variable names (commonly used short names)
+good-names=i,j,k,ex,Run,_,x,y,z,n,m,id,fd,db,io,url
+
