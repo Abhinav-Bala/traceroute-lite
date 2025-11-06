@@ -57,8 +57,14 @@ TTL (2): 15.2 ms  10.4 ms  14.9 ms  10.0.3.192
 TTL (3): 20.1 ms  19.8 ms  20.3 ms  172.16.7.33
 ...
 TTL (7): 25.1 ms  24.8 ms  25.3 ms  74.125.119.226 (destination reached!)
-Done tracing
 ```
 
+## Known Issues & Potential Improvements
 
+- **ICMP Packet Identification**: Currently, the program doesn't validate which outgoing UDP packet triggered each incoming ICMP response. This can cause delayed or out-of-order ICMP packets to be incorrectly matched with the wrong TTL, potentially showing false routing loops or incorrect hop sequences. Native traceroute solves this by:
+  - Using unique identifiers (sequence numbers) in each UDP packet
+  - Extracting and validating the original UDP packet data from within the ICMP response
+  - Verifying that the identifier matches the expected TTL/probe number
+
+- **Better destination detection heuristics**: Add logic to detect when the destination is likely reached but not responding (e.g., after multiple consecutive no-response hops)s
 
