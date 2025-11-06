@@ -133,13 +133,23 @@ def main():
                 icmp_type = struct.unpack("B", packet[20:21])[0]
                 icmp_code = struct.unpack("B", packet[21:22])[0]
 
-                if icmp_type == ICMP_DEST_UNREACH and icmp_code == ICMP_DEST_UNREACH_PORT:
-                    destination_reached = True
+                # only process valid ICMP responses (time exceeded or destination unreachable)
+                if icmp_type == ICMP_TIME_EXCEEDED or (
+                    icmp_type == ICMP_DEST_UNREACH and icmp_code == ICMP_DEST_UNREACH_PORT
+                ):
+                    # valid response
+                    timings.append(f"{elapsed_ms:.1f} ms")
                     curr_ip = source_ip
                     response_received = True
-                elif icmp_type == ICMP_TIME_EXCEEDED:
-                    curr_ip = source_ip
-                    response_received = True
+
+                    # we've reached our destination
+                    if icmp_type == ICMP_DEST_UNREACH:
+                        destination_reached = True
+                    # else: packet timed out en-route
+                else:
+                    # unexpected ICMP type, just ignore
+                    # this could be other ICMP messages on the network
+                    continue
 
             except socket.timeout:
                 # timeout - mark with * and continue to next attempt
@@ -159,8 +169,6 @@ def main():
             print(f"TTL ({curr_ttl}): {timing_str}  (no response)")
 
         curr_ttl += 1
-
-    print("Done tracing")
 
 
 if __name__ == "__main__":
